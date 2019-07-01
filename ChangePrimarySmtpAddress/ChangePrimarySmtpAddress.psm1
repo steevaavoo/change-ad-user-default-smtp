@@ -55,7 +55,7 @@ function Set-sbADUserNewPrimarySMTP {
 
         if ($PSCmdlet.ShouldProcess("User [$($sbADUserPrimarySmtp.SamAccountName)] with Primary SMTP [$($sbADUserPrimarySmtp.PrimarySMTP)]", "Change Primary SMTP to [$NewSmtpDomain]")) {
 
-            $aduser = Get-AdUser -Filter "samAccountName -like '*$($sbADUserPrimarySmtp.samAccountName)*'" -Properties 'proxyAddresses'
+            $aduser = Get-AdUser -Filter "samAccountName -eq '$($sbADUserPrimarySmtp.samAccountName)'" -Properties 'proxyAddresses'
             $currentproxyaddresses = $aduser.proxyAddresses
             $newdomain = $NewSmtpDomain
             $currentprimarysmtp = $currentproxyaddresses | Where-Object { $_ -clike '*SMTP*' }
@@ -94,7 +94,7 @@ function Set-sbADUserNewPrimarySMTP {
 
     # Outputting Results - getting fresh proxyAddresses for user
     Write-Verbose "Getting current user proxyAddresses"
-    Get-AdUser -Filter "samAccountName -like '*$($sbADUserPrimarySmtp.samAccountName)*'" -Properties 'proxyAddresses'
+    Get-AdUser -Filter "samAccountName -eq '$($sbADUserPrimarySmtp.samAccountName)'" -Properties 'proxyAddresses'
 } #if shouldprocess
 
 }
@@ -173,7 +173,7 @@ Process {
 
     if ($PSCmdlet.ShouldProcess("User [$($sbExoUserPrimarySmtp.Identity)] with Primary SMTP [$($sbExoUserPrimarySmtp.PrimarySMTP)]", "Change Primary SMTP to [$NewSmtpDomain]")) {
 
-        $exouser = Get-Mailbox -Identity "*$($sbExoUserPrimarySmtp.Identity)*"
+        $exouser = Get-Mailbox -Identity "$($sbExoUserPrimarySmtp.Identity)"
         $currentemailaddresses = $exouser.emailaddresses
         $newdomain = $NewSmtpDomain
         $currentprimarysmtp = $currentemailaddresses | Where-Object { $_ -clike '*SMTP*' }
@@ -212,7 +212,7 @@ Process {
 
 # Outputting Results - getting fresh emailaddresses for user
 Write-Verbose "Getting current user emailaddresses"
-$afterchanges = Get-Mailbox -Identity "*$($sbExoUserPrimarySmtp.Identity)*"
+$afterchanges = Get-Mailbox -Identity "$($sbExoUserPrimarySmtp.Identity)"
 
 [PSCustomObject]@{
     Name           = $afterchanges.Identity
