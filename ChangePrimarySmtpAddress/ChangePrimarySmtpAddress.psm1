@@ -14,7 +14,7 @@ function Get-sbAdUserPrimarySmtp {
     Process {
 
         foreach ($user in $UserName) {
-            $aduser = Get-AdUser -Filter "samAccountName -like '$user'" -Properties 'proxyAddresses'
+            $aduser = Get-AdUser -Filter "samAccountName -eq '$user'" -Properties 'proxyAddresses'
 
             # Making sure the user exists - will write warning if not.
             if ($aduser) {
