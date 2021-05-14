@@ -289,7 +289,7 @@ function Get-sbMailboxesWithoutNewSMTP {
         [Parameter()]
         [switch]$IncludeSharedMailboxes = $false,
         [Parameter()]
-        [switch]$IncludeOnPremiseMailboxes = $false
+        [switch]$IncludeSyncedMailboxes = $false
     )
 
     Begin {
@@ -301,7 +301,6 @@ function Get-sbMailboxesWithoutNewSMTP {
     } #begin
 
     Process {
-        # TODO Find a way to filter out Cloud-Only Mailboxes and make this a parameter.Property = IsDirSynced
         # Getting all mailboxes with/without shared mailboxes as required. Excluding DiscoverySearch in all cases.
         if ( $IncludeSharedMailboxes ) {
             Write-Verbose "Getting all User and Shared Mailboxes, excluding DiscoverySearchMailbox..."
@@ -315,11 +314,11 @@ function Get-sbMailboxesWithoutNewSMTP {
             Write-Verbose "All returned Identities below do NOT have an address (Primary or Alias) ending [@$NewSmtpDomain]."
         } # ifincludesharedmailboxes
 
-        if ( $IncludeOnPremiseMailboxes ) {
+        if ( $IncludeSyncedMailboxes ) {
             Write-Verbose "Mailboxes synced from On-Premises Exchange ARE included."
         } else {
             $AllMailboxes = $AllMailboxes | Where-Object { $_.IsDirSynced -eq $false }
-        } #ifincludeonpremisemailboxes
+        } #ifincludeSyncedMailboxes
 
         foreach ($Mailbox in $AllMailboxes) {
             $SearchAddress = "smtp:$($Mailbox.Alias)@$NewSmtpDomain"
@@ -329,7 +328,7 @@ function Get-sbMailboxesWithoutNewSMTP {
 
                 $MailboxNoMatch = [PSCustomObject]@{
                     PSTypeName = "Custom.SB.ExoUser"
-                    Identity   = $Mailbox.Identity
+                    Identity   = $Mailbox.Alias
                 }
 
                 $MailboxNoMatch
