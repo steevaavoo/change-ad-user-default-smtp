@@ -194,13 +194,17 @@ function Set-sbExoUserNewPrimarySMTP {
                 $currentemailaddresses | Out-File $backupfile
                 $newemailaddresses = $currentemailaddresses -creplace "SMTP:$oldprimary", "SMTP:$newprimary"
 
+                # I think this initial "if" is checking for an impossible situation, where the current Primary SMTP
+                # address also exists as an Alias. Which cannot happen as far as I know.
                 if ($newemailaddresses -ccontains "smtp:$oldprimary") {
-                    Write-Warning "Old smtp address already exists for [$($exouser.Identity)]"
+                    Write-Warning "Current Primary [$oldprimary] already exists as Alias for [$($exouser.Identity)]."
                 } elseif ($newemailaddresses -ccontains "smtp:$newprimary") {
-                    Write-Warning "New address present as secondary - converting to old`n"
+                    Write-Warning "New Primary [$newprimary] present as Alias - will become Primary."
+                    Write-Warning "Current Primary [$oldprimary] will become an Alias.`n"
                     $newemailaddresses = $newemailaddresses -creplace "smtp:$newprimary", "smtp:$oldprimary"
                 } else {
-                    Write-Warning "Adding old smtp: [$oldprimary]`n"
+                    Write-Warning "New Primary not present as Alias. Will add [$newprimary] to email address list."
+                    Write-Warning "Current Primary [$oldprimary] will become an Alias.`n"
                     $newemailaddresses += "smtp:$oldprimary"
 
                 } #if new/old addresses already exist as secondary smtp
@@ -210,16 +214,16 @@ function Set-sbExoUserNewPrimarySMTP {
 
             } #if alreadydone
 
-            # Outputting Results - getting fresh emailaddresses for user
-            Write-Verbose "Getting current user emailaddresses"
-            $afterchanges = Get-Mailbox -Identity "$($sbExoUserPrimarySmtp.Identity)"
-
-            [PSCustomObject]@{
-                Name           = $afterchanges.Identity
-                EmailAddresses = $afterchanges.EmailAddresses
-            }
-
         } #if shouldprocess
+
+        # Outputting Results - getting fresh emailaddresses for user
+        Write-Verbose "Getting current user emailaddresses"
+        $afterchanges = Get-Mailbox -Identity "$($sbExoUserPrimarySmtp.Identity)"
+
+        [PSCustomObject]@{
+            Name           = $afterchanges.Identity
+            EmailAddresses = $afterchanges.EmailAddresses
+        }
 
     }
 
