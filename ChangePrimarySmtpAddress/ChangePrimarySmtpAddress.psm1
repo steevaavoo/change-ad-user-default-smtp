@@ -150,8 +150,36 @@ function Get-sbExoUserPrimarySmtp {
     }
 } #function
 
-function Set-sbExoUserNewPrimarySMTP {
+function TS {
+    Get-Date -Format 'HH:mm:ss'
+} #function
 
+function Write-Log {
+    Param(
+        [Parameter()]
+        [string]$Message,
+        [Parameter()]
+        [string]$Path = "c:\users\$env:username\desktop\backups\$(Get-Date -Format 'dd MMM yy')-log.txt",
+        [Parameter()]
+        [switch]$Warning = $false,
+        [Parameter()]
+        [switch]$Silent = $false
+    )
+    if ( $Silent ) {
+        "[$(TS)] $Message" | Tee-Object -FilePath $Path -Append | Write-Verbose
+    } else {
+        if ( $Warning ) {
+            "[$(TS)] $Message" | Tee-Object -FilePath $Path -Append | Write-Warning
+        } else {
+            "[$(TS)] $Message" | Tee-Object -FilePath $Path -Append | Write-Host -ForegroundColor Green
+        } #ifwarning
+    } #ifsilent
+
+} #function
+
+
+function Set-sbExoUserNewPrimarySMTP {
+    # TODO Add/change a parameter to apply this to an individual user outside the pipeline
     [cmdletbinding(SupportsShouldProcess = $True, ConfirmImpact = 'High')]
     param(
         [Parameter(Mandatory = $True, ValueFromPipeline = $false)]
@@ -161,12 +189,16 @@ function Set-sbExoUserNewPrimarySMTP {
     )
 
     Begin {
-        # Checking that we're connected to Exchange Online
+        Write-Log "+++==========================================+++" -Silent
+        Write-Log "Primary SMTP address conversion process started." -Silent
+        Write-Log "Verifying connection to Microsoft 365..." -Silent
         $pssession = Get-PSSession | Where-Object { $_.ComputerName -eq "outlook.office365.com" }
         if (!($pssession)) {
             Throw "Please connect to Exchange Online Powershell and try again."
         }
+        Write-Log "Connection verified. Continuing.`n" -Silent
 
+        $ChangesMade = $false
     }
 
     Process {
@@ -183,33 +215,34 @@ function Set-sbExoUserNewPrimarySMTP {
 
 
             if ($currentemailaddresses -ccontains "SMTP:$newprimary") {
-                Write-Warning "Already Done!`n"
+                Write-Log "[$exouser] already has [$newprimary] as Primary SMTP!`n" -Warning
             } else {
+                $ChangesMade = $true
                 $backuppath = "c:\users\$env:username\desktop\backups"
                 $backupfile = "$backuppath\$($exouser.Identity)-emailaddresses.txt"
                 if (!(Test-Path $backuppath)) {
                     New-Item -ItemType Directory -Path $backuppath
                 } else { }
-                Write-Verbose "Backing up current emailaddresses to [$backupfile]`n"
+                Write-Log "Backing up current emailaddresses to [$backupfile]`n" -Silent
                 $currentemailaddresses | Out-File $backupfile
                 $newemailaddresses = $currentemailaddresses -creplace "SMTP:$oldprimary", "SMTP:$newprimary"
 
                 # I think this initial "if" is checking for an impossible situation, where the current Primary SMTP
                 # address also exists as an Alias. Which cannot happen as far as I know.
                 if ($newemailaddresses -ccontains "smtp:$oldprimary") {
-                    Write-Warning "Current Primary [$oldprimary] already exists as Alias for [$($exouser.Identity)]."
+                    Write-Log "Current Primary [$oldprimary] already exists as Alias for [$($exouser.Identity)]." -Warning
                 } elseif ($newemailaddresses -ccontains "smtp:$newprimary") {
-                    Write-Warning "New Primary [$newprimary] present as Alias - will become Primary."
-                    Write-Warning "Current Primary [$oldprimary] will become an Alias.`n"
+                    Write-Log "New Primary [$newprimary] present as Alias - will become Primary." -Warning
+                    Write-Log "Current Primary [$oldprimary] will become an Alias.`n" -Warning
                     $newemailaddresses = $newemailaddresses -creplace "smtp:$newprimary", "smtp:$oldprimary"
                 } else {
-                    Write-Warning "New Primary not present as Alias. Will add [$newprimary] to email address list."
-                    Write-Warning "Current Primary [$oldprimary] will become an Alias.`n"
+                    Write-Log "New Primary not present as Alias. Will add [$newprimary] to email address list." -Warning
+                    Write-Log "Current Primary [$oldprimary] will become an Alias.`n" -Warning
                     $newemailaddresses += "smtp:$oldprimary"
 
                 } #if new/old addresses already exist as secondary smtp
 
-                Write-Warning "Committing Changes..."
+                Write-Log "Committing Changes for [$($exouser.Identity)]..." -Warning
                 Set-Mailbox -Identity $exouser.Identity -EmailAddresses $newemailaddresses
 
             } #if alreadydone
@@ -217,17 +250,98 @@ function Set-sbExoUserNewPrimarySMTP {
         } #if shouldprocess
 
         # Outputting Results - getting fresh emailaddresses for user
-        Write-Verbose "Getting current user emailaddresses"
-        $afterchanges = Get-Mailbox -Identity "$($sbExoUserPrimarySmtp.Identity)"
 
-        [PSCustomObject]@{
-            Name           = $afterchanges.Identity
-            EmailAddresses = $afterchanges.EmailAddresses
-        }
+        if ( $ChangesMade ) {
+
+            Write-Log "Getting post-conversion email addresses for [$($exouser.Identity)]" -Silent
+            $afterchanges = Get-Mailbox -Identity "$($sbExoUserPrimarySmtp.Identity)"
+            Write-Log " [$($exouser)] now has the following email addresses: "
+            Write-Log " [$($afterchanges.EmailAddresses)]"
+
+            # [PSCustomObject]@{
+            #     Name           = $afterchanges.Identity
+            #     EmailAddresses = $afterchanges.EmailAddresses
+            # }
+
+        } #ifchangesmade
 
     }
 
     End {
-        Write-Host "Conversion(s) complete. Old settings backed up to [$backuppath]." -ForegroundColor Green
+
+        if ( $ChangesMade ) {
+            Write-Log "Conversion(s) complete. Old settings backed up to [$backuppath]."
+        } else {
+            Write-Log "No changes made - no backup taken."
+        } #ifchangesmade
+
     }
+
+} #function
+
+function Get-sbMailboxesWithoutNewSMTP {
+
+    [cmdletbinding()]
+    param(
+        # We want to accept multiple user names from a CSV file with a UserName header
+        [Parameter(Mandatory = $True, ValueFromPipeline = $false)]
+        [string]$NewSmtpDomain,
+        [Parameter()]
+        [switch]$IncludeSharedMailboxes = $false,
+        [Parameter()]
+        [switch]$IncludeOnPremiseMailboxes = $false
+    )
+
+    Begin {
+        # Checking that we're connected to Exchange Online
+        $pssession = Get-PSSession | Where-Object { $_.ComputerName -eq "outlook.office365.com" }
+        if (!($pssession)) {
+            Throw "Please connect to Exchange Online Powershell and try again."
+        }
+    } #begin
+
+    Process {
+        # TODO Find a way to filter out Cloud-Only Mailboxes and make this a parameter.Property = IsDirSynced
+        # Getting all mailboxes with/without shared mailboxes as required. Excluding DiscoverySearch in all cases.
+        if ( $IncludeSharedMailboxes ) {
+            Write-Verbose "Getting all User and Shared Mailboxes, excluding DiscoverySearchMailbox..."
+            Write-Verbose "Searching for occurrences of [$NewSmtpDomain] in their Email Addresses..."
+            $AllMailboxes = Get-Mailbox | Where-Object { $_.Alias -notlike "*DiscoverySearchMailbox*" }
+            Write-Verbose "All returned Identities below do NOT have an address (Primary or Alias) ending [@$NewSmtpDomain]."
+        } else {
+            Write-Verbose "Getting all User Mailboxes, excluding Shared Mailboxes and DiscoverySearchMailbox..."
+            Write-Verbose "Searching for occurrences of [$NewSmtpDomain] in their Email Addresses..."
+            $AllMailboxes = Get-Mailbox | Where-Object { $_.IsShared -eq $false -and $_.Alias -notlike "*DiscoverySearchMailbox*" }
+            Write-Verbose "All returned Identities below do NOT have an address (Primary or Alias) ending [@$NewSmtpDomain]."
+        } # ifincludesharedmailboxes
+
+        if ( $IncludeOnPremiseMailboxes ) {
+            Write-Verbose "Mailboxes synced from On-Premises Exchange ARE included."
+        } else {
+            $AllMailboxes = $AllMailboxes | Where-Object { $_.IsDirSynced -eq $false }
+        } #ifincludeonpremisemailboxes
+
+        foreach ($Mailbox in $AllMailboxes) {
+            $SearchAddress = "smtp:$($Mailbox.Alias)@$NewSmtpDomain"
+            if ( $($Mailbox).EmailAddresses -contains $SearchAddress ) {
+
+            } else {
+
+                $MailboxNoMatch = [PSCustomObject]@{
+                    PSTypeName = "Custom.SB.ExoUser"
+                    Identity   = $Mailbox.Identity
+                }
+
+                $MailboxNoMatch
+
+            } #ifmailboxcontainssearchaddress
+
+        } #foreach
+
+    } #process
+
+    End {
+
+    } #end
+
 } #function
